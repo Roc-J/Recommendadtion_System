@@ -12,3 +12,4 @@
 
 ### 目录
 * [第一章 好的推荐系统](https://github.com/Roc-J/Recommendadtion_System/tree/master/Ch01)
+* [第二章 利用用户行为数据](https://github.com/Roc-J/Recommendadtion_System/tree/master/Ch02)
