@@ -169,5 +169,153 @@ def Popularity(train, test, N):
 
 在计算平均流行度时对每个物品的流行度取对数，这是因为物品的流行度分布满足长尾分布，在取对数后，流行度的平均值更加稳定。  
 
+## 基于邻域的算法  
+
+基于邻域的算法是推荐系统中最基本的算法。  
+基于邻域的算法分为两大类
+
+* 基于用户的协同过滤算法  
+* 基于物品的协同过滤算法  
+
+### 基于用户的协同过滤算法
+
+基于用户的协同过滤算法主要包括两个步骤:  
+（1）找到和目标用户兴趣相似的用户集合  
+（2）找到这个集合中的用户喜欢的，且目标用户没有听说过的物品推荐给目标用户。  
+
+> 步骤（1）的关键就是计算两个用户的兴趣相似度。这里，协同过滤算法主要利用行为的相似度计算兴趣的相似度。给定用户u和用户v，令N(u)表示用户u曾经有过正反馈的物品集合，令N(v)为用户v曾经有过正反馈的物品集合。那么，我们可以通过如下的jacceard公式简单地计算u和v的兴趣相似度  
+N(u)&&N(v)/N(u)||N(v)  
+或者通过余弦相似度计算  
+N(u)&&N(v)/sqrt(|N(u)N(v)|)
+
+```
+import math
+# 余弦相似度
+def UserSimilarity(train):
+    W = dict()
+    for u in train.keys():
+        for v in train.keys():
+            if u == v:
+                continue
+            W[u][v] = len( train[u] & train[v])
+            W[u][v] /= math.sqrt(len(train[u]) * len(train[v]) * 1.0)
+    return W
+```
+#### 实际应用中缺点
+该代码对两两用户都用余弦相似度计算相似度。这种方法的时间复杂度是O(|U| * |U|)，这在用户数很大时非常耗时。
+>事实上，很多用户相互之间并没有对同样的物品产生过行为，即很多时候N(u)&&N(v)=0.**上面的算法将很多时间浪费在了计算这种用户之间的相似度上**。如果换一个思路，我们可以首先计算出N(u)&&N(v)！=0的用户对，然后去计算。
+
+为此，可以首先**建立物品到用户的倒排表**，对于每个物品都保存着对该物品产生过行为的用户列表。令稀疏矩阵C[u][v]=|N(u)&&N(v)|.  
+那么假设用户u和用户v同时属于倒排表中K个物品对应的用户列表，就有C[u][v]=K. 从而，可以扫描到倒排表中每个物品对应的用户列表，将用户列表中的两两用户对应的C[u][v]加1，最终就可以得到所有用户之间不为0的C[u][v]。
+
+```
+import math
+# 余弦相似度
+def UserSimilarity(train):
+    W = dict()
+    for u in train.keys():
+        for v in train.keys():
+            if u == v:
+                continue
+            W[u][v] = len( train[u] & train[v])
+            W[u][v] /= math.sqrt(len(train[u]) * len(train[v]) * 1.0)
+    return W
+
+# 建立物品-用户倒排索引列表
+def UserSimilarity(train):
+    # 物品-用户倒排
+    item_users = dict()
+    for u, items in train.keys():
+        for i in items.keys():
+            if i not in item_users:
+                item_users[i] = set()
+            item_users[i].add(u)
+    
+    # 计算物品-用户矩阵
+    C = dict()
+    N = dict()
+    for i, users in item_users.items():
+        for u in users:
+            N[u] += 1
+            for v in users:
+                if u == v:
+                    continue
+                C[u][v] += 1
+    
+    # 计算
+    W = dict()
+    for u, related_users in C.items():
+        for v, cuv in related_users.items():
+            W[u][v] = cuv / math.sqrt(N[u] * N[v])
+    
+    return W
+```
+
+得到用户之间的兴趣相似度后，UserCF算法会给用户推荐和他兴趣最相似的K个用户喜欢的物品。  
+如下的公式度量了UserCF算法中用户u对物品i的感兴趣程度：
+>公式不显示 
+
+其中，S(u,K)包含和用户u兴趣最接近的K个用户，N(i)是对物品i有过行为的用户集合，Wuv是用户u和用户v的兴趣相似度，Rvi代表用户v对物品i的兴趣，因为使用的是单一行为的隐反馈数据，所以所有的Rvi=1
+
+UserCf 的推荐算法实现伪代码
+```
+# UserCF推荐算法
+def Recommend(user, train, W):
+    rank = dict()
+    interacted_items = train[user]
+    for v, wuv in sorted(W[u].items(), key=itemgetter(1), reverse=True)[0:K]:
+        for i, rvi in train[v].items():
+            if i in interacted_items:
+                continue
+            rank[i] += wuv * rvi 
+    return rank
+```
+
+**用户相似度计算的改进**
+前面计算用户兴趣相似度的最简单的公式（余弦相似度公式），但这个公式过于粗糙，本节将讨论如何改进该公式来提高UserCF的推荐性能。
+
+举个例子，以图书为例，如果两个用户都购买过《新华词典》，这丝毫不能说明他们兴趣相似，因为绝大多数中国人小时候都买过《新华词典》。但如果两个用户都买过《数据挖掘导论》，那可以认为他们的兴趣比较相似，因为只有研究数据挖掘的人才会买这本书。**换句话说，两个用户对冷门物品采取同样的行为更能说明他们兴趣的相似度**。
+
+**因此通过1/(log1 + |N(i)|) 来惩罚用户u和用户v共同兴趣列表中热门物品对他们相似度的影响。**
+
+其实就是这本书要是被越多的用户拥有，把这个书的权重就略微低。
+
+将上面的改进的策略，UserCF算法记为User-IIF算法。
+```
+# 建立物品-用户倒排索引列表, 新增惩罚阈值，User-IIF
+def UserSimilarity(train):
+    # 物品-用户倒排
+    item_users = dict()
+    for u, items in train.keys():
+        for i in items.keys():
+            if i not in item_users:
+                item_users[i] = set()
+            item_users[i].add(u)
+    
+    # 计算物品-用户矩阵
+    C = dict()
+    N = dict()
+    for i, users in item_users.items():
+        for u in users:
+            N[u] += 1
+            for v in users:
+                if u == v:
+                    continue
+                # 主要这改变权重
+                C[u][v] += 1/math.log(1+len(users))
+    
+    # 计算
+    W = dict()
+    for u, related_users in C.items():
+        for v, cuv in related_users.items():
+            W[u][v] = cuv / math.sqrt(N[u] * N[v])
+    
+    return W
+```
+
+### 实际在线系统使用的UserCF的例子  
+相比基于物品的协同过滤算法(itemCF)， UserCF在目前的实际应用中使用并不多。  
+>最著名的使用者是Digg, 在2008年对推荐系统进行了新的尝试。
+
 ### 参考文献
 1. 项亮. 推荐系统实践[M]. 北京: 人民邮电出版社, 2012.
