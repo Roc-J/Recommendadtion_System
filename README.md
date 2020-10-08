@@ -13,3 +13,5 @@
 ### 目录
 * [第一章 好的推荐系统](https://github.com/Roc-J/Recommendadtion_System/tree/master/Ch01)
 * [第二章 利用用户行为数据](https://github.com/Roc-J/Recommendadtion_System/tree/master/Ch02)
+* [第三章 推荐系统冷启动问题](https://github.com/Roc-J/Recommendadtion_System/tree/master/Ch03)
+* [第四章 利用用户标签数据](https://github.com/Roc-J/Recommendadtion_System/tree/master/Ch04)
